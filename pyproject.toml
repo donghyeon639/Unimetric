@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unimetric"
+version = "0.1.0"
+description = "Shared metrics and natural-language data queries"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110,<1", "uvicorn>=0.29,<1", "SQLAlchemy>=2,<3",
+  "pandas>=2,<3", "pydantic>=2,<3", "PyYAML>=6,<7", "httpx>=0.27,<1",
+  "psycopg2-binary>=2.9,<3", "PyMySQL>=1.1,<2",
+  "openpyxl>=3.1,<4", "xlrd>=2,<3", "python-multipart>=0.0.9,<1",
+  "python-dotenv>=1,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+unimetric = "unimetric.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["unimetric*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+unimetric = ["web/*.html", "web/assets/*.css", "web/assets/js/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

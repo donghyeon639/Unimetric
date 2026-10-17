@@ -1,3 +1,6 @@
-/gradlew text eol=lf
+* text=auto
+*.py text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
 *.bat text eol=crlf
-*.jar binary

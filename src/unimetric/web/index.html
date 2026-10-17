@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>unimetric</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<div class="app">
+  <!-- ================= Sidebar ================= -->
+  <aside class="side">
+    <div class="brand"><span class="mark">U</span><b>uni<span class="dot">·</span>metric</b></div>
+    <div class="orgbox">
+      <div class="orglabel">단체</div>
+      <button class="orgswitch" id="orgSwitch">
+        <span class="av" id="orgAv">–</span>
+        <span class="nm" id="orgNm">단체 없음</span>
+        <span class="cv">▾</span>
+      </button>
+      <div class="orgmenu" id="orgMenu"></div>
+    </div>
+    <nav id="nav">
+      <div class="sec">작업 공간</div>
+      <a data-view="overview" class="active">${''}</a>
+    </nav>
+    <div class="foot">unimetric · semantic layer</div>
+  </aside>
+
+  <!-- ================= Main ================= -->
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb"><b id="cbOrg">—</b><span class="sep">/</span><span id="cbView">개요</span>
+        <span class="badge" id="cbMode"></span></div>
+      <div class="sp"></div>
+      <label for="llmProvider" class="muted" style="font-size:12px">AI</label>
+      <select id="llmProvider" class="in" style="width:auto;max-width:200px" aria-label="AI 제공자 선택">
+        <option value="">서버 기본설정</option>
+      </select>
+      <span id="llmStatus" class="faint" style="font-size:11px" role="status"></span>
+      <button class="btn sm" id="refreshBtn">↻ 새로고침</button>
+      <button class="btn pri sm" id="navChatBtn">＋ AI로 지표 만들기</button>
+    </div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<!-- ================= New Org Modal ================= -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <div class="mh"><h2>새 단체</h2><p>회사·동아리·팀 등 데이터를 모아 지표를 보는 단위입니다.</p></div>
+    <div class="mb">
+      <div class="grid2 field">
+        <div><label class="fl">단체 키</label><input class="in" id="np_key" placeholder="my_team"></div>
+        <div><label class="fl">이름</label><input class="in" id="np_name" placeholder="우리 팀"></div>
+      </div>
+      <div class="field">
+        <label class="fl">데이터 소스</label>
+        <div class="seg" id="np_seg">
+          <label><input type="radio" name="src" value="live" checked><span>🔌 라이브 연결</span></label>
+          <label><input type="radio" name="src" value="copy"><span>📦 전체 복사</span></label>
+          <label><input type="radio" name="src" value="file"><span>📄 파일</span></label>
+        </div>
+        <p class="muted" id="np_hint" style="font-size:12px;margin:8px 2px 0"></p>
+      </div>
+      <div id="dbFields">
+        <div class="grid2 field">
+          <div><label class="fl">종류</label>
+            <select class="in" id="db_kind"><option value="postgres">PostgreSQL</option>
+              <option value="mysql">MySQL</option><option value="sqlite">SQLite(경로)</option></select></div>
+          <div><label class="fl">Database</label><input class="in" id="db_database" placeholder="dbname / 경로"></div>
+        </div>
+        <div class="grid2 field" id="db_host4">
+          <div><label class="fl">Host</label><input class="in" id="db_host" placeholder="localhost"></div>
+          <div><label class="fl">Port</label><input class="in" id="db_port" placeholder="5432"></div>
+          <div><label class="fl">User</label><input class="in" id="db_user"></div>
+          <div><label class="fl">Password</label><input class="in" id="db_password" type="password"></div>
+        </div>
+        <div class="row"><button class="btn sm" id="testConn">연결 테스트</button>
+          <span class="muted" id="testMsg" style="font-size:12px"></span></div>
+        <div id="copyExtra" class="hide">
+          <div class="row" style="margin-top:10px"><button class="btn sm" id="selAll">전체</button>
+            <button class="btn sm" id="selNone">해제</button><span class="muted" id="tcount" style="font-size:12px"></span></div>
+          <div class="tlist" id="tlist"></div>
+        </div>
+      </div>
+      <div id="progBox" class="hide" style="margin-top:8px">
+        <div class="prog" id="progStatus"></div>
+        <div class="prog" id="progTables" style="max-height:180px;overflow:auto;margin-top:6px"></div>
+      </div>
+      <div class="err" id="npErr" style="margin-top:8px"></div>
+    </div>
+    <div class="mf">
+      <button class="btn" id="cancelNp">취소</button>
+      <button class="btn" id="retryNp" style="display:none">실패 재시도</button>
+      <button class="btn pri" id="createNp">만들기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 지표 편집/생성 모달 ============ -->
+<div class="overlay" id="edOverlay">
+  <div class="modal">
+    <div class="mh"><h2 id="edTitle">지표</h2><p>이 단체의 지표 카탈로그(전사 공유)에 저장됩니다.</p></div>
+    <div class="mb">
+      <div class="grid2 field">
+        <div><label class="fl">이름</label><input class="in" id="ed_name" placeholder="metric_name"></div>
+        <div><label class="fl">테이블</label><select class="in" id="ed_table"></select></div>
+      </div>
+      <div class="field"><label class="fl">설명</label><input class="in" id="ed_desc" placeholder="이 지표가 뜻하는 것"></div>
+      <div class="field"><label class="fl">유형</label>
+        <select class="in" id="ed_type"><option value="simple">단순 집계</option><option value="ratio">비율 (A / B)</option></select></div>
+      <div id="ed_simple" class="field">
+        <label class="fl">계산</label>
+        <div class="row"><select class="in" id="ed_m_agg" style="flex:1"></select><select class="in" id="ed_m_expr" style="flex:1"></select></div>
+      </div>
+      <div id="ed_ratio" class="hide">
+        <div class="field"><label class="fl">분자</label><div class="row"><select class="in" id="ed_n_agg" style="flex:1"></select><select class="in" id="ed_n_expr" style="flex:1"></select></div></div>
+        <div class="field"><label class="fl">분모</label><div class="row"><select class="in" id="ed_d_agg" style="flex:1"></select><select class="in" id="ed_d_expr" style="flex:1"></select></div></div>
+      </div>
+      <div class="field"><label class="fl">조건(필터) — 선택</label><input class="in mono" id="ed_filter" placeholder="예: feedback_status = 'DONE'"></div>
+      <div class="field"><label class="fl">차원(쪼개기) — 미리보기에서 group by</label><div id="ed_dims" class="muted"></div></div>
+      <div class="row"><label style="font-size:13px"><input type="checkbox" id="ed_cert"> certified(인증)</label></div>
+      <div id="ed_out" style="margin-top:10px"></div>
+      <div class="err" id="ed_err" style="margin-top:6px"></div>
+    </div>
+    <div class="mf"><button class="btn" id="ed_cancel">취소</button>
+      <button class="btn" id="ed_preview">미리보기</button>
+      <button class="btn pri" id="ed_save">저장</button></div>
+  </div>
+</div>
+
+<script type="module" src="/assets/js/app.js"></script>
+</body>
+</html>

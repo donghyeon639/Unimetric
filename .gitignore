@@ -1,9 +1,4 @@
-HELP.md
-.gradle
 build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
 
 ### STS ###
 .apt_generated
@@ -125,6 +120,7 @@ id_ed25519
 /data/private/
 
 ### Runtime logs and local agent state ###
+/.local/
 *.log
 *.log.*
 /logs/
