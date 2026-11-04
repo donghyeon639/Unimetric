@@ -3,7 +3,7 @@
 from ...core.logconf import log
 from ...data import query as dq
 from .. import embeddings
-from . import catalog, index, search
+from . import catalog, index, relations, search
 
 def build_context(project: str, question: str, k_tables: int = 8, k_metrics: int = 5) -> str:
     """질문에 맞는 지표/테이블만 추려 LLM 프롬프트용 컨텍스트 텍스트를 만든다.
@@ -33,14 +33,38 @@ def build_context(project: str, question: str, k_tables: int = 8, k_metrics: int
             log.warning("[context] 하이브리드 검색 실패: %s", exc)
             use_vec = False
 
+    schema = dq.get_schema(project)
+    fks = dq.foreign_keys(project)
+    aliases = relations.matching_terms(question, schema)
+    explicit = search._tokens(question)
+    anchors = [t for t in schema if t.lower() in explicit]
+    anchors += [t for t in aliases if t not in anchors]
+
     if not use_vec:  # 어휘 폴백
         log.info("[context] 벡터 검색 불가 → 어휘(lexical) 폴백 사용")
         metric_hits = search._lexical(catalog._metric_documents(project), question, k_metrics)
-        table_hits = search._lexical(catalog._table_documents(project), question, k_tables, fill=True)
-    elif len(dq.list_tables(project)) <= k_tables:
+        docs = catalog._table_documents(project, schema=schema, fks=fks)
+        table_hits = search._lexical(docs, question, k_tables, fill=True)
+    elif len(schema) <= k_tables:
         # 작은 스키마는 검색 점수/인덱스 갱신 여부와 관계없이 전체 관계를 전달한다.
         table_hits = [{"ref": ref, "content": content}
-                      for ref, content in catalog._table_documents(project)]
+                      for ref, content in catalog._table_documents(project, schema=schema, fks=fks)]
+
+    if len(schema) > k_tables:
+        hits = {h["ref"]: h["content"] for h in table_hits}
+        # Zero-score filler is useful only after real matches and their join paths.
+        ranked = list(hits) if use_vec else [
+            h["ref"] for h in table_hits
+            if explicit & search._tokens(h["ref"] + " " + h["content"])
+        ]
+        selected = relations.expand_tables(ranked, fks, schema, k_tables, anchors=anchors)
+        selected = list(dict.fromkeys([*selected, *(t for t in hits if t in schema)]))[:k_tables]
+        if not use_vec:
+            hits.update(docs)
+        missing = {t: schema[t] for t in selected if t not in hits}
+        if missing:
+            hits.update(catalog._table_documents(project, schema=missing, fks=fks, samples=False))
+        table_hits = [{"ref": t, "content": hits[t]} for t in selected]
     log.info("[context] mode=%s 지표 %d개, 테이블 %d개 선택",
              "vector" if use_vec else "lexical", len(metric_hits), len(table_hits))
 
@@ -49,5 +73,7 @@ def build_context(project: str, question: str, k_tables: int = 8, k_metrics: int
         parts.append("[관련 지표 — 질문에 맞으면 새로 만들지 말고 이걸 재사용/인용]")
         parts += [f"- {h['content']}" for h in metric_hits]
     parts.append("\n[관련 테이블 — 이 안에서만 컬럼/조인/조건을 고르세요]")
-    parts += [h["content"] for h in table_hits]
+    for hit in table_hits:
+        terms = aliases.get(hit["ref"])
+        parts.append(hit["content"] + (" 업무 용어: " + ", ".join(terms) + "." if terms else ""))
     return "\n".join(parts)

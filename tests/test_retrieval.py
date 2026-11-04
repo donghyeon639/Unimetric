@@ -1,7 +1,7 @@
 """Regression coverage for weak Korean keyword matches hiding join tables."""
 
 from unimetric.ai import retrieval
-from unimetric.ai.rag import catalog, context as rag_context, index, search
+from unimetric.ai.rag import catalog, context as rag_context, index, relations, search
 
 
 QUESTION = (
@@ -21,8 +21,10 @@ DOCS = [
 
 
 def setup_documents(monkeypatch):
-    monkeypatch.setattr(catalog, "_table_documents", lambda project: DOCS)
+    monkeypatch.setattr(catalog, "_table_documents", lambda project, **kwargs: DOCS)
     monkeypatch.setattr(catalog, "_metric_documents", lambda project: [])
+    monkeypatch.setattr(rag_context.dq, "get_schema", lambda project: dict.fromkeys(t for t, _ in DOCS))
+    monkeypatch.setattr(rag_context.dq, "foreign_keys", lambda project: {})
 
 
 def test_korean_question_does_not_lose_join_tables_on_one_sample_match(monkeypatch):
@@ -58,7 +60,6 @@ def test_small_schema_is_complete_even_with_partial_vector_index(monkeypatch):
     monkeypatch.setattr(search, "_search", lambda project, question, kind, k:
                         [{"ref": "reviews", "content": DOCS[-1][1]}] if kind == "table" else [])
     monkeypatch.setattr(search, "_keyword_hits", lambda *args: [])
-    monkeypatch.setattr(rag_context.dq, "list_tables", lambda project: [ref for ref, _ in DOCS])
     context = retrieval.build_context("market", QUESTION)
     for ref, _ in DOCS:
         assert f"테이블 {ref}." in context
@@ -70,10 +71,48 @@ def test_large_vector_schema_keeps_retrieval_without_loading_all_samples(monkeyp
     monkeypatch.setattr(search, "_search", lambda project, question, kind, k:
                         [{"ref": "listings", "content": DOCS[2][1]}] if kind == "table" else [])
     monkeypatch.setattr(search, "_keyword_hits", lambda *args: [])
-    monkeypatch.setattr(rag_context.dq, "list_tables", lambda project: [str(i) for i in range(30)])
+    monkeypatch.setattr(rag_context.dq, "get_schema", lambda project: dict.fromkeys(["listings", *map(str, range(29))]))
+    monkeypatch.setattr(rag_context.dq, "foreign_keys", lambda project: {})
     def unexpected_full_load(project):
         raise AssertionError("Large schemas should still use the retrieval budget")
     monkeypatch.setattr(catalog, "_table_documents", unexpected_full_load)
     context = retrieval.build_context("large", QUESTION)
     assert "테이블 listings." in context
     assert "테이블 reviews." not in context
+
+
+def test_korean_terms_and_foreign_keys_recover_join_on_large_schema(monkeypatch):
+    schema = {
+        table: [{"column": "id", "type": "integer"}]
+        for table in ("transactions", "listings", "neighborhoods", *(f"zz_{i:02d}" for i in range(17)))
+    }
+    fks = {
+        "transactions": [{"column": "listing_id", "ref_table": "listings", "ref_column": "id"}],
+        "listings": [{"column": "neighborhood_id", "ref_table": "neighborhoods", "ref_column": "id"}],
+    }
+    monkeypatch.setattr(rag_context.embeddings, "is_enabled", lambda: False)
+    monkeypatch.setattr(rag_context.dq, "get_schema", lambda project: schema)
+    monkeypatch.setattr(rag_context.dq, "foreign_keys", lambda project: fks)
+    monkeypatch.setattr(rag_context.dq, "preview_table", lambda *args: {"rows": []})
+    monkeypatch.setattr(catalog, "_metric_documents", lambda project: [])
+
+    # No mention of the listing table: it must come from the FK path.
+    question = "동네별로 완료된 거래금액을 합산해줘."
+    old = search._lexical(catalog._table_documents("market"), question, 8, fill=True)
+    assert not {"transactions", "listings", "neighborhoods"} & {h["ref"] for h in old}
+    context = retrieval.build_context("market", question, k_tables=3)
+    for table in ("transactions", "listings", "neighborhoods"):
+        assert f"테이블 {table}." in context
+    assert "listing_id→listings.id" in context
+    assert "neighborhood_id→neighborhoods.id" in context
+    assert "테이블 zz_" not in context
+
+
+def test_expansion_uses_remaining_budget_for_referenced_table():
+    tables = ["transactions", "listings", "reviews", "extra"]
+    fks = {"transactions": [{"ref_table": "listings"}],
+           "reviews": [{"ref_table": "transactions"}]}
+    assert relations.expand_tables(
+        ["transactions", "extra"], fks, tables, 2, anchors=["transactions"],
+    ) == ["transactions", "listings"]
+    assert relations.matching_terms("판매글의 거래처", tables) == {"listings": ["판매글"]}

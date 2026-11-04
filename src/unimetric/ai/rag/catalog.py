@@ -9,10 +9,10 @@ def _trunc(v, n: int = 40) -> str:
     return s if len(s) <= n else s[:n] + "…"
 
 
-def _table_documents(project: str) -> list[tuple[str, str]]:
+def _table_documents(project: str, *, schema=None, fks=None, samples=True) -> list[tuple[str, str]]:
     """테이블별 (ref, content) 문서 목록. content = 컬럼+관계+샘플행."""
-    schema = dq.get_schema(project)
-    fks = dq.foreign_keys(project)
+    schema = dq.get_schema(project) if schema is None else schema
+    fks = dq.foreign_keys(project) if fks is None else fks
     docs = []
     for t, cols in schema.items():
         col_str = ", ".join(f"{c['column']}({c['type']})" for c in cols)
@@ -22,6 +22,9 @@ def _table_documents(project: str) -> list[tuple[str, str]]:
             doc += " 관계: " + "; ".join(
                 f"{r['column']}→{r['ref_table']}.{r['ref_column']}" for r in rel
             ) + "."
+        if not samples:
+            docs.append((t, doc))
+            continue
         try:
             rows = dq.preview_table(project, t, 0, 2)["rows"]
             if rows:

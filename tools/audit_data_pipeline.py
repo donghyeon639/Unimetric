@@ -183,7 +183,8 @@ def audit() -> dict:
     with patch.object(embeddings, "is_enabled", return_value=True), \
          patch.object(embeddings, "embed_one", side_effect=embed_question), \
          patch.object(index, "_count", return_value=1), \
-         patch.object(rag_catalog.dq, "list_tables", return_value=[f"table_{i}" for i in range(9)]), \
+         patch.object(rag_catalog.dq, "get_schema", return_value={f"table_{i}": [] for i in range(9)}), \
+         patch.object(rag_catalog.dq, "foreign_keys", return_value={}), \
          patch.object(search, "get_engine", return_value=engine), \
          patch.object(search, "_keyword_hits", return_value=[]):
         retrieval.build_context("synthetic", "매출")
