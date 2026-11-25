@@ -94,7 +94,9 @@ function renderExtra(body,ex){
       if(!name)return;
       try{
         await api('/api/builder/save',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({project:state.project,spec:{type:'sql',name:name.trim(),sql:ex.answer.sql,description:''}})});
+          body:JSON.stringify({project:state.project,spec:{
+            type:'sql',name:name.trim(),sql:ex.answer.sql,description:'',chart:ex.answer.chart,
+          }})});
         sv.textContent='저장됨 ✓';sv.disabled=true;
       }catch(e){msg.innerHTML='<span class="err">'+esc(e.message)+'</span>';}
     };

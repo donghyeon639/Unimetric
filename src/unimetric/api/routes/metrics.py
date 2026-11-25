@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from ...ai import llm as text2sql
 from ...data import query as engine
 from ...semantic import builder
+from ...semantic.visualization import query_result
 from ...workspace import projects
 from ..deps import project_model, require_project
 from ..schemas import Ask, MetricQuery
@@ -48,7 +49,7 @@ def metrics_query(body: MetricQuery) -> dict:
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     rows = engine.run_select(sql, body.project)
-    return {"sql": sql, "rows": rows}
+    return query_result(sql, rows, model.metric_chart(body.metric))
 
 
 @router.post("/ask")

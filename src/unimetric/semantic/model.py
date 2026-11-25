@@ -19,6 +19,7 @@ from typing import Literal
 
 import yaml
 from pydantic import BaseModel, field_validator
+from .visualization import ChartSpec
 
 # 집계 종류 -> SQL 템플릿.
 _AGG_SQL = {
@@ -105,6 +106,7 @@ class SqlMetric(BaseModel):
 
     name: str
     sql: str
+    chart: ChartSpec | None = None
     description: str | None = None
     owner: str | None = None
     certified: bool = False
@@ -120,6 +122,10 @@ class Model(BaseModel):
 
     entities: list[Entity] = []
     sql_metrics: list[SqlMetric] = []   # 자유 SQL 지표(조인 등)
+
+    def metric_chart(self, name: str) -> ChartSpec | None:
+        metric = self._find_sql_metric(name)
+        return metric.chart if metric else None
 
     # --- 조회 헬퍼 -----------------------------------------------------
     def _find_metric(self, name: str) -> tuple[Entity, Metric]:
