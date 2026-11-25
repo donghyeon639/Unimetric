@@ -19,6 +19,7 @@ from ...core.logconf import log
 from ...data import query as engine
 from ...semantic import builder
 from ...semantic import model as metrics
+from ...semantic.visualization import query_result
 from ..deps import require_project
 from ..schemas import ChatReq
 
@@ -116,7 +117,7 @@ def chat(body: ChatReq) -> dict:
                 sql = model.compile(spec["name"], spec.get("dimensions") or [])
                 rows = engine.run_select(sql, body.project)
                 log.info("[chat] metric '%s' 실행 → %d행 | %s", spec.get("name"), len(rows), sql)
-                out["result"] = {"sql": sql, "rows": rows}
+                out["result"] = query_result(sql, rows, action.get("chart"), require_chart=True)
             except Exception as exc:
                 log.warning("[chat] metric 실행 실패: %s", exc)
                 out["result_error"] = str(exc)
@@ -125,7 +126,7 @@ def chat(body: ChatReq) -> dict:
             try:
                 rows = engine.run_select(sql, body.project)
                 log.info("[chat] sql 실행 → %d행 | %s", len(rows), sql[:200])
-                out["answer"] = {"sql": sql, "rows": rows}
+                out["answer"] = query_result(sql, rows, action.get("chart"), require_chart=True)
             except Exception as exc:
                 log.warning("[chat] sql 실행 실패: %s", exc)
                 out["answer_error"] = str(exc)

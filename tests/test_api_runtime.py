@@ -1,10 +1,16 @@
 import asyncio
+import json
+from decimal import Decimal
+
 import httpx
 
 from unimetric.api.app import app
 from unimetric.api.routes import builder, chat, metrics
 from unimetric.api.schemas import AiMetricReq, Ask, ChatReq
 from unimetric.ai import conversation
+from unimetric.semantic.builder import add_sql_metric
+from unimetric.semantic.model import load_model
+from unimetric.api.schemas import MetricQuery
 
 
 def test_static_page_and_provider_status_without_database():
@@ -60,3 +66,31 @@ def test_chat_and_compaction_use_same_request_provider(monkeypatch):
     result = chat.chat(ChatReq(project="p", message="q", provider="codex_cli"))
     assert "clarify" in result
     assert providers == ["codex_cli"]
+
+
+def test_chat_and_saved_sql_chart_use_validated_output_aliases(monkeypatch):
+    sql = "SELECT seller, completed_count, total_amount FROM candidate_sellers ORDER BY total_amount DESC"
+    rows = [
+        {"seller": "판매자A", "completed_count": 5, "total_amount": Decimal("621300")},
+        {"seller": "판매자B", "completed_count": 7, "total_amount": Decimal("558500")},
+    ]
+    chart = {"label_column": "seller", "value_column": "total_amount", "title": "완료 거래금액", "unit": "원"}
+    action = {"action": "sql", "sql": sql, "chart": chart}
+    monkeypatch.setattr(chat, "require_project", lambda *args: {})
+    monkeypatch.setattr(conversation, "ensure_session", lambda *args: "session")
+    monkeypatch.setattr(conversation, "add_message", lambda *args: None)
+    monkeypatch.setattr(conversation, "history", lambda *args: ("", []))
+    monkeypatch.setattr(conversation, "maybe_compact", lambda *args: None)
+    monkeypatch.setattr(chat.retrieval, "build_context", lambda *args: "context")
+    monkeypatch.setattr(chat.text2sql, "chat", lambda *args: json.dumps(action))
+    monkeypatch.setattr(chat.engine, "run_select", lambda *args: rows)
+
+    body = ChatReq(project="p", message="거래금액이 높은 판매자")
+    assert chat.chat(body)["answer"] == {"sql": sql, "rows": rows, "chart": chart}
+    model = load_model(add_sql_metric("", {"name": "top_sellers", "sql": sql, "chart": chart}))
+    monkeypatch.setattr(metrics, "project_model", lambda *args: model)
+    assert metrics.metrics_query(MetricQuery(project="p", metric="top_sellers"))["chart"] == chart
+
+    for invalid in ("missing_column", "seller"):
+        action["chart"] = {**chart, "value_column": invalid}
+        assert chat.chat(body)["answer"] == {"sql": sql, "rows": rows, "chart": None}

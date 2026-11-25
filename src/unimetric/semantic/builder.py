@@ -117,6 +117,8 @@ def add_sql_metric(yaml_text: str, spec: dict) -> str:
     }
     if spec.get("description"):
         entry["description"] = spec["description"]
+    if spec.get("chart") is not None:
+        entry["chart"] = spec["chart"]
     data["sql_metrics"] = [m for m in sql_metrics if m.get("name") != entry["name"]]
     data["sql_metrics"].append(entry)
     new_yaml = yaml.dump(data, allow_unicode=True, sort_keys=False)

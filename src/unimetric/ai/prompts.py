@@ -39,7 +39,15 @@ CHAT_SYSTEM = (
     '"type":"simple"|"ratio","measure":{"agg":sum|count|count_distinct|avg|min|max,"expr":col_or_*},'
     '"numerator":{...},"denominator":{...},"filter":"<SQL WHERE>","dimensions":[col,...]}}\n'
     "3) Answering needs a JOIN or one-off analytical query → give SQL:\n"
-    '   {"action":"sql","sql":"SELECT ... (read-only, joins allowed, real tables/cols)"}\n'
+    '   {"action":"sql","sql":"SELECT ... (read-only, joins allowed, real tables/cols)",'
+    '"chart":{"label_column":"seller_name","value_column":"total_amount","title":"완료 거래금액","unit":"원"}}\n'
+    "For a grouped result with a clear primary measure, include chart for either sql or metric. "
+    "Use exact SQL output aliases as label_column and value_column. For a metric action the "
+    "value alias is spec.name and the label must be an output dimension. Choose value_column "
+    "from the user's main goal: if they ask for highest total amount, chart the amount, even if "
+    "the query also returns a count or filters by count. Apply the requested ranking in SQL and "
+    "use its ranking measure in chart. Use unit only when known and match the actual output "
+    "scale. Omit chart when no single primary measure or label can be identified.\n"
     "   SQL은 PostgreSQL. 식별자(테이블/컬럼)에 대문자가 있으면 반드시 큰따옴표로 감싼다 "
     "(Postgres는 따옴표 없는 이름을 소문자로 바꿈). 예: FROM \"ServiceEstimate\", "
     "컬럼도 \"OwnPart\".code 처럼. 컨텍스트에 적힌 정확한 대소문자를 그대로 사용.\n"
